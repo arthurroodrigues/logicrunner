@@ -9,6 +9,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Gerar assets procedurais
+
+```bash
+python generate_assets.py
+```
+
+Os sprites gerados ficam em `assets/generated/`.
+
 ## Controles
 
 - `Seta esquerda` / `A`: mover para a esquerda
