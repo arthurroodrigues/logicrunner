@@ -19,7 +19,6 @@ from src.managers.phase_manager import PhaseManager
 from src.managers.save_manager import SaveManager
 from src.managers.score_manager import ScoreManager
 from src.managers.spawn_manager import RunnerSpawnManager
-from src.core.floor_renderer import ScanlineFloorRenderer
 from src.ui.button import Button
 from src.ui.hud import Hud
 
@@ -35,7 +34,6 @@ class Game:
 
         raw_cover = pygame.image.load("assets/capa.png").convert()
         self._cover = pygame.transform.smoothscale(raw_cover, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-        self._floor_renderer = ScanlineFloorRenderer(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, config.HORIZON_Y)
 
 
         self.fonts = {
@@ -502,10 +500,50 @@ class Game:
         pygame.display.flip()
 
     def draw_background(self) -> None:
-        self.screen.fill((8, 10, 16))
-        self._floor_renderer.draw(self.screen, self.track_offset)
-
+        self.screen.fill(config.BG)
         projection = self.projection
+        pygame.draw.rect(self.screen, (3, 6, 16), (0, 0, config.SCREEN_WIDTH, config.HORIZON_Y + 22))
+
+        for chunk in sorted(self.chunk_manager.chunks, key=lambda item: item.z, reverse=True):
+            z = chunk.z
+            z_near = max(config.TRACK_NEAR_Z, z)
+            z_far = min(config.WORLD_FAR_Z, z + config.CHUNK_LENGTH)
+            if z_far <= config.TRACK_NEAR_Z or z_near >= config.WORLD_FAR_Z:
+                continue
+
+            biome = chunk.biome
+            floor_color = biome["floor"]
+            center_color = biome["lane"]
+            pygame.draw.polygon(self.screen, floor_color, projection.ground_quad(-3.75, 3.75, z_near, z_far))
+
+            lane_ranges = [(-3.45, -1.22), (-1.12, 1.12), (1.22, 3.45)]
+            for lane_index, (left, right) in enumerate(lane_ranges):
+                lane_color = center_color if lane_index == 1 else (8, 20, 38)
+                pygame.draw.polygon(self.screen, lane_color, projection.ground_quad(left, right, z_near, z_far))
+
+            for x in [-1.17, 1.17]:
+                pygame.draw.polygon(self.screen, biome["accent"], projection.ground_quad(x - 0.025, x + 0.025, z_near, z_far))
+            for x in [-3.55, 3.55]:
+                pygame.draw.polygon(self.screen, biome["edge"], projection.ground_quad(x - 0.04, x + 0.04, z_near, z_far))
+
+            stripe_z = z_near + 0.18
+            while stripe_z < z_far:
+                pygame.draw.polygon(self.screen, (14, 64, 92), projection.ground_quad(-3.45, 3.45, stripe_z, min(stripe_z + 0.08, z_far)))
+                stripe_z += 3.0
+
+            left_wall = projection.vertical_quad(-4.05, 0.0, 3.9, z_near, z_far)
+            right_wall = projection.vertical_quad(4.05, 0.0, 3.9, z_near, z_far)
+            pygame.draw.polygon(self.screen, biome["wall"], left_wall)
+            pygame.draw.polygon(self.screen, biome["wall"], right_wall)
+
+            ceiling = [
+                projection.project(-4.05, 3.9, z_near)[0:2],
+                projection.project(4.05, 3.9, z_near)[0:2],
+                projection.project(4.05, 3.9, z_far)[0:2],
+                projection.project(-4.05, 3.9, z_far)[0:2],
+            ]
+            pygame.draw.polygon(self.screen, biome["ceiling"], ceiling)
+
         for x, y, z, length in self.speed_lines:
             start = projection.project(x, y, z)[0:2]
             end = projection.project(x, y, max(config.TRACK_NEAR_Z, z - length))[0:2]
