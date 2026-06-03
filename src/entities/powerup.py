@@ -2,15 +2,14 @@ import math
 import pygame
 
 from src import config
-from src.core.utils import draw_text
+from src.core.utils import draw_text, get_sprite_scaled
 
 
 POWERUPS = {
-    "boost": {"label": "BOOST", "color": (255, 225, 80), "duration": 4.0},
-    "magnet": {"label": "IMA", "color": (80, 220, 255), "duration": 7.0},
-    "slowmo": {"label": "SLOW", "color": (180, 130, 255), "duration": 4.5},
-    "shield": {"label": "ESCUDO", "color": (80, 255, 150), "duration": 8.0},
-    "multiplier": {"label": "x2", "color": (255, 110, 210), "duration": 8.0},
+    "boost":      {"label": "BOOST",  "color": (255, 225, 80),  "duration": 4.0,  "sprite": "boost.png"},
+    "slowmo":     {"label": "SLOW",   "color": (180, 130, 255), "duration": 4.5,  "sprite": "slow.png"},
+    "shield":     {"label": "ESCUDO", "color": (80, 255, 150),  "duration": 8.0,  "sprite": "escudo.png"},
+    "multiplier": {"label": "x2",     "color": (255, 110, 210), "duration": 8.0,  "sprite": "mutiplicador.png"},
 }
 
 
@@ -41,20 +40,29 @@ class PowerUp:
         return self.z < -4.0
 
     def collides_with(self, player: object) -> bool:
-        return self.lane == player.lane and self.z <= config.COLLISION_Z
+        return self.z <= config.COLLISION_Z and abs(player.x - self.x) <= config.LANE_WIDTH_WORLD * 0.85
 
     def draw(self, surface: pygame.Surface, font: pygame.font.Font, projection: object) -> None:
-        y = 1.1 + math.sin(self.phase) * 0.18
-        sx, sy, scale = projection.project(self.x, y, self.z)
+        y_world = 1.1 + math.sin(self.phase) * 0.18
+        sx, sy, scale = projection.project(self.x, y_world, self.z)
         radius = max(3, int(self.radius * scale))
         if sy < config.HORIZON_Y - 30 or sy > config.SCREEN_HEIGHT + 30:
             return
-        color = self.data["color"]
-        gx, gy, ground_scale = projection.project(self.x, 0.0, self.z)
-        shadow = pygame.Rect(0, 0, max(3, int(0.72 * ground_scale)), max(2, int(0.16 * ground_scale)))
+
+        # Ground shadow
+        gx, gy, gs = projection.project(self.x, 0.0, self.z)
+        shadow = pygame.Rect(0, 0, max(3, int(0.72 * gs)), max(2, int(0.16 * gs)))
         shadow.center = (gx, gy)
         pygame.draw.ellipse(surface, (0, 0, 0), shadow)
-        pygame.draw.circle(surface, color, (sx, sy), radius, max(1, radius // 9))
-        pygame.draw.circle(surface, (15, 22, 44), (sx, sy), max(1, radius - 5))
-        if radius > 16:
-            draw_text(surface, self.data["label"], font, config.WHITE, center=(sx, sy), max_width=radius * 2)
+
+        sprite_file = self.data["sprite"]
+        if sprite_file:
+            size = radius * 2
+            img = get_sprite_scaled(sprite_file, size, size)
+            surface.blit(img, (sx - radius, sy - radius))
+        else:
+            color = self.data["color"]
+            pygame.draw.circle(surface, color, (sx, sy), radius, max(1, radius // 9))
+            pygame.draw.circle(surface, (15, 22, 44), (sx, sy), max(1, radius - 5))
+            if radius > 16:
+                draw_text(surface, self.data["label"], font, config.WHITE, center=(sx, sy), max_width=radius * 2)

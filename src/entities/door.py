@@ -54,7 +54,7 @@ class Door:
         self.pulse += dt * (6.0 if self.answer_kind == "false" else 3.5)
 
     def collides_with(self, player: object) -> bool:
-        return self.lane == player.lane and self.z <= config.COLLISION_Z
+        return self.z <= config.COLLISION_Z and abs(player.x - self.x) <= config.LANE_WIDTH_WORLD * 0.85
 
     def is_offscreen(self) -> bool:
         return self.z < -3.0

@@ -1,9 +1,52 @@
 import math
+import os
 
 import pygame
 
 from src import config
 
+
+# ── Sprite sheet loading ──────────────────────────────────────────────────────
+
+_FRAMES: dict[str, pygame.Surface] | None = None
+_CACHE: dict[tuple[str, int], pygame.Surface] = {}
+
+
+def _load_frames() -> dict[str, pygame.Surface]:
+    global _FRAMES
+    if _FRAMES is not None:
+        return _FRAMES
+    sheet = pygame.image.load(os.path.join("assets", "player.png")).convert_alpha()
+
+    # Image: 666x375, transparent background.
+    # Row 1 (y=0, h=187): 4 running frames; x dividers at gap midpoints.
+    # Row 2 (y=187, h=188): 3 crouch frames (left) + 3 jump frames (right).
+    ry1, rh1 = 0,   187
+    ry2, rh2 = 187, 188
+    run_xs    = [107, 213, 317, 422, 527]
+    crouch_xs = [92,  172, 248, 321]
+    jump_xs   = [321, 407, 489, 573]
+
+    frames: dict[str, pygame.Surface] = {}
+    for i in range(4):
+        frames[f"run_{i}"] = sheet.subsurface(run_xs[i], ry1, run_xs[i+1] - run_xs[i], rh1)
+    for i in range(3):
+        frames[f"crouch_{i}"] = sheet.subsurface(crouch_xs[i], ry2, crouch_xs[i+1] - crouch_xs[i], rh2)
+        frames[f"jump_{i}"]   = sheet.subsurface(jump_xs[i],   ry2, jump_xs[i+1]   - jump_xs[i],   rh2)
+    _FRAMES = frames
+    return frames
+
+
+def _get_scaled(frames: dict, key: str, target_h: int) -> pygame.Surface:
+    cache_key = (key, target_h)
+    if cache_key not in _CACHE:
+        src = frames[key]
+        w = max(1, int(src.get_width() * target_h / src.get_height()))
+        _CACHE[cache_key] = pygame.transform.smoothscale(src, (w, target_h))
+    return _CACHE[cache_key]
+
+
+# ── Player class ──────────────────────────────────────────────────────────────
 
 class Player:
     def __init__(self) -> None:
@@ -32,7 +75,7 @@ class Player:
         return self.slide_timer > 0
 
     @property
-    def height(self) -> int:
+    def height(self) -> float:
         return self.slide_height if self.is_sliding else self.standing_height
 
     @property
@@ -121,34 +164,44 @@ class Player:
             self.landing_timer = max(0.0, self.landing_timer - dt)
         return landed
 
+    def _frame_key(self) -> str:
+        if self.is_sliding:
+            return f"crouch_{int(self.run_time * 7) % 3}"
+        if self.is_airborne:
+            if self.vy > 2:
+                return "jump_0"
+            if self.vy >= -2:
+                return "jump_1"
+            return "jump_2"
+        return f"run_{int(self.run_time * 9) % 4}"
+
     def draw(self, surface: pygame.Surface, font: pygame.font.Font, projection: object | None = None) -> None:
         if projection:
-            rect = projection.world_rect(self.x, self.world_y, config.PLAYER_RENDER_Z, self.width, self.height)
+            rect = projection.world_rect(self.x, self.world_y, config.PLAYER_RENDER_Z, self.width, self.standing_height)
             rect.y += 28
         else:
             rect = self.hitbox
+
         lean_px = int(self.lean * 12)
         run_bob = 0 if self.is_airborne else int(math.sin(self.run_time * 18) * 4)
         if self.is_sliding:
             rect.y += 10
 
-        glow = rect.inflate(32, 22)
-        pygame.draw.ellipse(surface, (15, 105, 120), glow, 2)
-        shadow = pygame.Rect(rect.x - 15, config.GROUND_Y + 8, rect.width + 30, 14)
-        pygame.draw.ellipse(surface, (0, 0, 0), shadow)
+        # Shadow ellipse on the ground
+        shadow_w = rect.width + 24
+        pygame.draw.ellipse(surface, (0, 0, 0), pygame.Rect(rect.centerx - shadow_w // 2, config.GROUND_Y + 6, shadow_w, 12))
 
-        body = rect.move(lean_px, run_bob)
-        color = config.RED if self.stumble_timer > 0 else config.CYAN
-        pygame.draw.rect(surface, color, body, border_radius=14)
-        pygame.draw.rect(surface, config.WHITE, body.inflate(-18, -22), 2, border_radius=10)
+        frames = _load_frames()
+        key = self._frame_key()
+        target_h = max(10, rect.height)
+        img = _get_scaled(frames, key, target_h)
 
-        visor = pygame.Rect(body.x + 12, body.y + 18, body.width - 24, 12)
-        if self.is_sliding:
-            visor.y = body.y + 11
-        pygame.draw.rect(surface, config.PURPLE, visor, border_radius=6)
+        blit_x = rect.centerx - img.get_width() // 2 + lean_px
+        blit_y = rect.bottom - img.get_height() + run_bob
+        surface.blit(img, (blit_x, blit_y))
 
-        foot_y = body.bottom + (0 if self.is_airborne else run_bob)
-        pygame.draw.line(surface, config.WHITE, (body.centerx - 12, body.bottom - 4), (body.centerx - 28, foot_y), 3)
-        pygame.draw.line(surface, config.WHITE, (body.centerx + 12, body.bottom - 4), (body.centerx + 28, foot_y), 3)
-        label = font.render("BACK", True, config.BG)
-        surface.blit(label, label.get_rect(center=body.center))
+        # Red tint overlay when hit
+        if self.stumble_timer > 0:
+            tint = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+            tint.fill((255, 40, 40, 110))
+            surface.blit(tint, (blit_x, blit_y))

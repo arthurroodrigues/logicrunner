@@ -30,7 +30,7 @@ BIOMES = {
         "accent": (80, 220, 255),
         "edge": (70, 255, 160),
         "decor": ["LASER", "DADOS", "BIO"],
-        "obstacles": ["slide", "lane", "jump"],
+        "obstacles": ["cone", "lane", "jump"],
     },
     "cafeteria": {
         "name": "Cafeteria",
@@ -52,7 +52,7 @@ BIOMES = {
         "accent": (80, 255, 150),
         "edge": (0, 150, 255),
         "decor": ["DRONE", "BANCO", "NEON"],
-        "obstacles": ["jump", "slide", "lane"],
+        "obstacles": ["jump", "cone", "lane"],
     },
     "secret": {
         "name": "Setor Hacker",
@@ -63,7 +63,7 @@ BIOMES = {
         "accent": (185, 80, 255),
         "edge": (255, 65, 120),
         "decor": ["GLITCH", "ROOT", "CORE"],
-        "obstacles": ["slide", "lane", "jump"],
+        "obstacles": ["cone", "lane", "jump"],
     },
 }
 

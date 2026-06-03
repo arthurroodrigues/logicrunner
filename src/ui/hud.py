@@ -13,17 +13,17 @@ class Hud:
         score = game.score_manager.score
         lives = "♥" * game.lives
         top = f"Fase {phase}: {game.phase_manager.config['name']}    Score: {score}    Vidas: {lives}"
-        draw_text(surface, top, fonts["small"], config.WHITE, topleft=(48, 34), max_width=890)
+        draw_text(surface, top, fonts["small"], config.WHITE, topleft=(48, 34), max_width=config.SCREEN_WIDTH - 110)
         combo = f"Combo: x{game.score_manager.current_combo}"
         progress = game.phase_manager.phase_correct_count / game.phase_manager.required_correct_count
         draw_text(surface, combo, fonts["small"], config.CYAN, topleft=(48, 64))
-        bar = pygame.Rect(184, 67, 310, 16)
+        bar = pygame.Rect(240, 67, 400, 16)
         pygame.draw.rect(surface, (22, 30, 55), bar, border_radius=8)
         pygame.draw.rect(surface, config.GREEN, (bar.x, bar.y, int(bar.w * progress), bar.h), border_radius=8)
         pygame.draw.rect(surface, config.WHITE, bar, 1, border_radius=8)
-        speed_rect = pygame.Rect(555, 67, 150, 16)
+        speed_rect = pygame.Rect(710, 67, 190, 16)
         pygame.draw.rect(surface, (22, 30, 55), speed_rect, border_radius=8)
         pygame.draw.rect(surface, config.PURPLE, (speed_rect.x, speed_rect.y, int(speed_rect.w * game.speed_ratio), speed_rect.h), border_radius=8)
         pygame.draw.rect(surface, config.WHITE, speed_rect, 1, border_radius=8)
-        draw_text(surface, "VEL", fonts["tiny"], config.MUTED, topleft=(714, 65))
-        draw_text(surface, game.current_challenge["question"], fonts["medium"], config.WHITE, topleft=(48, 94), max_width=900)
+        draw_text(surface, "VEL", fonts["tiny"], config.MUTED, topleft=(910, 65))
+        draw_text(surface, game.current_challenge["question"], fonts["medium"], config.WHITE, topleft=(48, 94), max_width=config.SCREEN_WIDTH - 110)

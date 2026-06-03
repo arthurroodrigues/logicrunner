@@ -1,12 +1,13 @@
 {
-  "high_score": 2165,
-  "max_unlocked_phase": 2,
+  "high_score": 4480,
+  "max_unlocked_phase": 3,
   "completed_phases": [
-    1
+    1,
+    2
   ],
   "settings": {
     "music_volume": 0.7,
     "sfx_volume": 0.8,
-    "fullscreen": false
+    "fullscreen": true
   }
 }

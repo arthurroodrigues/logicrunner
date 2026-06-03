@@ -32,6 +32,10 @@ class Game:
         self.running = True
         self.state = states.SPLASH
 
+        raw_cover = pygame.image.load("assets/capa.png").convert()
+        self._cover = pygame.transform.smoothscale(raw_cover, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+
+
         self.fonts = {
             "title": pygame.font.SysFont("consolas", 66, bold=True),
             "large": pygame.font.SysFont("consolas", 38, bold=True),
@@ -80,6 +84,7 @@ class Game:
         self.distance = 0.0
         self.combo_pop_timer = 0.0
         self.answer_flash_timer = 0.0
+        self.correct_lane: int | None = None
 
     @property
     def run_speed(self) -> float:
@@ -257,9 +262,23 @@ class Game:
     def next_round(self) -> None:
         self.current_challenge = self.challenge_manager.next_challenge(self.phase_manager.current_phase)
         speed = self.world_speed
+        options = self.current_challenge["options"]
+        correct_answer = self.current_challenge["correct_answer"]
+        try:
+            self.correct_lane = options.index(correct_answer)
+        except ValueError:
+            self.correct_lane = None
+
+        # Remove obstacles that would block the path to the correct door
+        if self.correct_lane is not None:
+            self.obstacles = [
+                obs for obs in self.obstacles
+                if not (obs.lane == self.correct_lane and obs.z < config.ANSWER_GATE_Z + 12)
+            ]
+
         self.doors = [
-            Door(index, option, option == self.current_challenge["correct_answer"], speed)
-            for index, option in enumerate(self.current_challenge["options"])
+            Door(index, option, option == correct_answer, speed)
+            for index, option in enumerate(options)
         ]
         self.answer_flash_timer = 1.25
         self.feedback_timer = 0
@@ -283,7 +302,8 @@ class Game:
             self.chunk_manager.update(self.world_speed * dt, difficulty)
             biome_key = self.chunk_manager.current_biome_key()
             new_obstacles, new_powerups, new_collectibles = self.spawn_manager.update(
-                dt, self.phase_manager.current_phase, self.world_speed, biome_key
+                dt, self.phase_manager.current_phase, self.world_speed, biome_key,
+                correct_lane=self.correct_lane if self.doors else None,
             )
             self.obstacles.extend(new_obstacles)
             self.powerups.extend(new_powerups)
@@ -446,7 +466,10 @@ class Game:
             self.particles.append(Particle(px + random.randint(-26, 26), py, config.PURPLE))
 
     def draw(self) -> None:
-        self.draw_background()
+        if self.state in (states.SPLASH, states.MAIN_MENU):
+            self.screen.blit(self._cover, (0, 0))
+        else:
+            self.draw_background()
         if self.state == states.SPLASH:
             self.draw_splash()
         elif self.state == states.MAIN_MENU:
@@ -521,19 +544,6 @@ class Game:
             ]
             pygame.draw.polygon(self.screen, biome["ceiling"], ceiling)
 
-            for decor in chunk.decorations:
-                panel_z = chunk.z + decor["z"]
-                if panel_z < config.TRACK_NEAR_Z or panel_z > config.WORLD_FAR_Z:
-                    continue
-                sx, sy, scale = projection.project(decor["x"], decor["y"], panel_z)
-                w = max(8, int(1.2 * scale))
-                h = max(6, int(0.62 * scale))
-                rect = pygame.Rect(sx - w // 2, sy - h // 2, w, h)
-                pygame.draw.rect(self.screen, (8, 16, 34), rect, border_radius=4)
-                pygame.draw.rect(self.screen, biome["accent"], rect, 1, border_radius=4)
-                if w > 35:
-                    draw_text(self.screen, decor["label"], self.fonts["tiny"], config.MUTED, center=rect.center, max_width=w)
-
         for x, y, z, length in self.speed_lines:
             start = projection.project(x, y, z)[0:2]
             end = projection.project(x, y, max(config.TRACK_NEAR_Z, z - length))[0:2]
@@ -547,44 +557,49 @@ class Game:
             self.screen.blit(overlay, (0, 0))
 
     def draw_title(self, subtitle: str | None = None) -> None:
+        cx = config.SCREEN_WIDTH // 2
         glow = pulse(80, 180, 0.004, pygame.time.get_ticks())
         title = self.fonts["title"].render("LOGIC RUNNER", True, config.CYAN)
         shadow = self.fonts["title"].render("LOGIC RUNNER", True, config.PURPLE)
-        self.screen.blit(shadow, shadow.get_rect(center=(504, 104)))
-        self.screen.blit(title, title.get_rect(center=(500, 100)))
+        self.screen.blit(shadow, shadow.get_rect(center=(cx + 4, 104)))
+        self.screen.blit(title, title.get_rect(center=(cx, 100)))
         if subtitle:
             surf = self.fonts["medium"].render(subtitle, True, config.WHITE)
             surf.set_alpha(glow)
-            self.screen.blit(surf, surf.get_rect(center=(500, 158)))
+            self.screen.blit(surf, surf.get_rect(center=(cx, 158)))
 
     def draw_splash(self) -> None:
-        self.draw_title("Pressione ENTER para continuar")
-        draw_text(self.screen, "Runner arcade + logica matematica", self.fonts["medium"], config.WHITE, center=(500, 420))
-        pygame.draw.circle(self.screen, config.CYAN, (500, 505), 54, 4)
-        pygame.draw.rect(self.screen, config.PURPLE, (470, 460, 60, 90), 3, border_radius=14)
+        glow = pulse(140, 255, 0.004, pygame.time.get_ticks())
+        hint = self.fonts["medium"].render("Pressione ENTER para continuar", True, config.WHITE)
+        hint.set_alpha(glow)
+        self.screen.blit(hint, hint.get_rect(center=(config.SCREEN_WIDTH // 2, 662)))
 
     def draw_main_menu(self) -> None:
-        self.draw_title()
+        overlay = pygame.Surface((config.SCREEN_WIDTH, 340), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 172))
+        self.screen.blit(overlay, (0, config.SCREEN_HEIGHT - 340))
         labels = ["INICIAR JOGO", "SELECIONAR FASE", "COMO JOGAR", "CONFIGURACOES", "SAIR"]
-        self.draw_button_list(labels, self.menu_index, 245)
-        info = f"Melhor pontuacao: {self.save_manager.data['high_score']}    Fase maxima desbloqueada: {self.phase_manager.unlocked_phase}"
-        draw_text(self.screen, info, self.fonts["small"], config.MUTED, center=(500, 622))
+        self.draw_button_list(labels, self.menu_index, 382)
+        info = f"Melhor pontuacao: {self.save_manager.data['high_score']}   Fase maxima: {self.phase_manager.unlocked_phase}"
+        draw_text(self.screen, info, self.fonts["small"], config.MUTED, center=(config.SCREEN_WIDTH // 2, 668))
 
     def draw_button_list(self, labels: list[str], selected: int, start_y: int) -> None:
+        cx = config.SCREEN_WIDTH // 2
         for index, label in enumerate(labels):
-            rect = pygame.Rect(350, start_y + index * 58, 300, 42)
+            rect = pygame.Rect(cx - 170, start_y + index * 58, 340, 42)
             Button(rect, label).draw(self.screen, self.fonts["small"], selected == index)
 
     def draw_phase_select(self) -> None:
         from src.data.phases import PHASES
 
-        draw_text(self.screen, "SELECIONE A FASE", self.fonts["large"], config.CYAN, center=(500, 90))
+        cx = config.SCREEN_WIDTH // 2
+        draw_text(self.screen, "SELECIONE A FASE", self.fonts["large"], config.CYAN, center=(cx, 90))
         completed = set(self.save_manager.data["completed_phases"])
         for index in range(10):
             phase = index + 1
             col = index % 2
             row = index // 2
-            rect = pygame.Rect(185 + col * 330, 155 + row * 78, 300, 52)
+            rect = pygame.Rect(cx - 330 + col * 390, 155 + row * 78, 320, 52)
             locked = phase > self.phase_manager.unlocked_phase
             done = phase in completed
             text = f"{phase}. {PHASES[phase]['name']}"
@@ -593,26 +608,28 @@ class Game:
             elif done:
                 text = f"{text} OK"
             Button(rect, text).draw(self.screen, self.fonts["tiny"], self.phase_index == index, locked)
-        draw_text(self.screen, "Setas para navegar, ENTER para jogar, ESC para voltar", self.fonts["small"], config.MUTED, center=(500, 610))
+        draw_text(self.screen, "Setas para navegar, ENTER para jogar, ESC para voltar", self.fonts["small"], config.MUTED, center=(cx, 610))
 
     def draw_how_to_play(self) -> None:
-        draw_text(self.screen, "COMO JOGAR", self.fonts["large"], config.CYAN, center=(500, 82))
+        cx = config.SCREEN_WIDTH // 2
+        draw_text(self.screen, "COMO JOGAR", self.fonts["large"], config.CYAN, center=(cx, 82))
         lines = [
             "A/D ou esquerda/direita trocam de faixa com movimento suave.",
             "SPACE, W ou seta para cima fazem o personagem pular.",
             "S, CTRL ou seta para baixo ativam slide/agachar.",
-            "Pule caixas, cones e livros. Deslize sob lasers e barras.",
+            "Pule caixas e cones pulando ou desviando. Desvie de bloqueios.",
             "Desvie de bloqueios laterais trocando de faixa.",
             "Ao mesmo tempo, escolha a porta com a resposta logica correta.",
-            "Powerups: boost, ima, slow motion, escudo e multiplicador.",
+            "Powerups: boost, slow motion, escudo e multiplicador.",
         ]
         for index, line in enumerate(lines):
-            draw_text(self.screen, line, self.fonts["medium"], config.WHITE, center=(500, 165 + index * 48), max_width=850)
-        draw_text(self.screen, "ENTER ou ESC para voltar", self.fonts["small"], config.MUTED, center=(500, 610))
+            draw_text(self.screen, line, self.fonts["medium"], config.WHITE, center=(cx, 165 + index * 48), max_width=1100)
+        draw_text(self.screen, "ENTER ou ESC para voltar", self.fonts["small"], config.MUTED, center=(cx, 610))
 
     def draw_settings(self) -> None:
         settings = self.save_manager.data["settings"]
-        draw_text(self.screen, "CONFIGURACOES", self.fonts["large"], config.CYAN, center=(500, 90))
+        cx = config.SCREEN_WIDTH // 2
+        draw_text(self.screen, "CONFIGURACOES", self.fonts["large"], config.CYAN, center=(cx, 90))
         labels = [
             f"Volume musica: {settings['music_volume']:.1f}",
             f"Volume efeitos: {settings['sfx_volume']:.1f}",
@@ -620,7 +637,7 @@ class Game:
             "Confirmar reset" if self.confirm_reset else "Resetar progresso",
         ]
         self.draw_button_list(labels, self.settings_index, 210)
-        draw_text(self.screen, "Use esquerda/direita para ajustar. ESC volta.", self.fonts["small"], config.MUTED, center=(500, 570))
+        draw_text(self.screen, "Use esquerda/direita para ajustar. ESC volta.", self.fonts["small"], config.MUTED, center=(cx, 570))
 
     def draw_playing(self) -> None:
         draw_order = []
@@ -637,7 +654,7 @@ class Game:
         self.draw_answer_flash()
         if self.combo_pop_timer > 0:
             scale = 1 + self.combo_pop_timer
-            draw_text(self.screen, f"COMBO x{self.score_manager.current_combo}", self.fonts["medium"], config.GREEN, center=(500, int(162 - 10 * scale)))
+            draw_text(self.screen, f"COMBO x{self.score_manager.current_combo}", self.fonts["medium"], config.GREEN, center=(config.SCREEN_WIDTH // 2, int(162 - 10 * scale)))
         self.hud.draw(self.screen, self.fonts, self)
 
     def draw_answer_flash(self) -> None:
@@ -668,7 +685,7 @@ class Game:
         self.screen.blit(overlay, (0, 0))
 
     def draw_powerup_ui(self) -> None:
-        x = 760
+        x = config.SCREEN_WIDTH - 210
         y = 146
         for name, timer in self.active_powerups.items():
             data = POWERUPS[name]
@@ -683,16 +700,18 @@ class Game:
 
     def draw_pause(self) -> None:
         self.draw_modal("JOGO PAUSADO")
+        cx = config.SCREEN_WIDTH // 2
         labels = ["CONTINUAR", "REINICIAR FASE", "VOLTAR AO MENU", "SAIR"]
         for index, label in enumerate(labels):
-            rect = pygame.Rect(350, 265 + index * 55, 300, 40)
+            rect = pygame.Rect(cx - 150, 265 + index * 55, 300, 40)
             Button(rect, label).draw(self.screen, self.fonts["small"], self.pause_index == index)
 
     def draw_feedback(self) -> None:
         self.draw_modal(self.feedback_title)
-        draw_text(self.screen, f"Resposta correta: {self.feedback_correct}", self.fonts["medium"], config.GREEN, center=(500, 310), max_width=650)
-        draw_text(self.screen, self.feedback_explanation, self.fonts["small"], config.WHITE, center=(500, 380), max_width=690)
-        draw_text(self.screen, "ESPACO para continuar", self.fonts["tiny"], config.MUTED, center=(500, 470))
+        cx = config.SCREEN_WIDTH // 2
+        draw_text(self.screen, f"Resposta correta: {self.feedback_correct}", self.fonts["medium"], config.GREEN, center=(cx, 310), max_width=850)
+        draw_text(self.screen, self.feedback_explanation, self.fonts["small"], config.WHITE, center=(cx, 380), max_width=900)
+        draw_text(self.screen, "ESPACO para continuar", self.fonts["tiny"], config.MUTED, center=(cx, 470))
 
     def draw_phase_complete(self) -> None:
         self.draw_modal("FASE CONCLUIDA!")
@@ -705,8 +724,9 @@ class Game:
             f"Maior combo: {self.score_manager.max_combo}",
             "ENTER para proxima fase ou ESC para menu",
         ]
+        cx = config.SCREEN_WIDTH // 2
         for index, line in enumerate(lines):
-            draw_text(self.screen, line, self.fonts["small"], config.WHITE if index < 5 else config.MUTED, center=(500, 255 + index * 38), max_width=720)
+            draw_text(self.screen, line, self.fonts["small"], config.WHITE if index < 5 else config.MUTED, center=(cx, 255 + index * 38), max_width=900)
 
     def draw_end_screen(self, title: str, color: tuple[int, int, int]) -> None:
         self.draw_modal(title, color)
@@ -722,14 +742,16 @@ class Game:
         elif self.state == states.VICTORY:
             lines.append("Voce dominou os principais conceitos de logica proposicional.")
         lines.append("ENTER para jogar novamente ou ESC para menu")
+        cx = config.SCREEN_WIDTH // 2
         for index, line in enumerate(lines):
-            draw_text(self.screen, line, self.fonts["small"], config.WHITE if index < len(lines) - 1 else config.MUTED, center=(500, 230 + index * 38), max_width=760)
+            draw_text(self.screen, line, self.fonts["small"], config.WHITE if index < len(lines) - 1 else config.MUTED, center=(cx, 230 + index * 38), max_width=960)
 
     def draw_modal(self, title: str, color: tuple[int, int, int] = config.CYAN) -> None:
         overlay = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 145))
         self.screen.blit(overlay, (0, 0))
-        rect = pygame.Rect(160, 155, 680, 390)
+        cx = config.SCREEN_WIDTH // 2
+        rect = pygame.Rect(cx - 440, 155, 880, 390)
         pygame.draw.rect(self.screen, (10, 14, 32), rect, border_radius=8)
         pygame.draw.rect(self.screen, color, rect, 3, border_radius=8)
-        draw_text(self.screen, title, self.fonts["large"], color, center=(500, 205), max_width=630)
+        draw_text(self.screen, title, self.fonts["large"], color, center=(cx, 205), max_width=820)
