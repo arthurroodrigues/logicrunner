@@ -1,9 +1,11 @@
 {
-  "high_score": 4480,
-  "max_unlocked_phase": 3,
+  "high_score": 9245,
+  "max_unlocked_phase": 5,
   "completed_phases": [
     1,
-    2
+    2,
+    3,
+    4
   ],
   "settings": {
     "music_volume": 0.7,
